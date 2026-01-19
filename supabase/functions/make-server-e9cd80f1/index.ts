@@ -1,0 +1,316 @@
+import { Hono } from 'https://deno.land/x/hono@v3.11.7/mod.ts';
+import { cors } from 'https://deno.land/x/hono@v3.11.7/middleware.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8';
+
+const app = new Hono();
+
+app.use('*', cors());
+
+// Supabase client
+const supabase = () => createClient(
+  (typeof Deno !== "undefined" ? Deno.env.get("SUPABASE_URL") : process.env.SUPABASE_URL)!,
+  (typeof Deno !== "undefined" ? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") : process.env.SUPABASE_SERVICE_ROLE_KEY)!,
+);
+
+// KV Store functions
+const kv = {
+  async set(key: string, value: any): Promise<void> {
+    const { error } = await supabase().from("kv_store_e9cd80f1").upsert({ key, value });
+    if (error) throw new Error(error.message);
+  },
+  
+  async get(key: string): Promise<any> {
+    const { data, error } = await supabase().from("kv_store_e9cd80f1").select("value").eq("key", key).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data?.value;
+  },
+  
+  async del(key: string): Promise<void> {
+    const { error } = await supabase().from("kv_store_e9cd80f1").delete().eq("key", key);
+    if (error) throw new Error(error.message);
+  },
+  
+  async getByPrefix(prefix: string): Promise<any[]> {
+    const { data, error } = await supabase().from("kv_store_e9cd80f1").select("key, value").like("key", prefix + "%");
+    if (error) throw new Error(error.message);
+    return data?.map((d) => d.value) ?? [];
+  }
+};
+
+// Generate random game code
+function generateGameCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+// Generate unique ID
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+// ==================== WORDS MANAGEMENT ====================
+
+// Get all words
+app.get('/make-server-e9cd80f1/words', async (c) => {
+  try {
+    const words = await kv.getByPrefix('word:');
+    return c.json({ words: words || [] });
+  } catch (error) {
+    console.error('Error getting words:', error);
+    return c.json({ error: 'Failed to get words' }, 500);
+  }
+});
+
+// Add new word
+app.post('/make-server-e9cd80f1/words', async (c) => {
+  try {
+    const { word, category, hint } = await c.req.json();
+    
+    if (!word || typeof word !== 'string') {
+      return c.json({ error: 'Word is required' }, 400);
+    }
+
+    const wordId = generateId();
+    const wordData = {
+      id: wordId,
+      word: word.toUpperCase().trim(),
+      category: category || 'General',
+      hint: hint || ''
+    };
+
+    await kv.set(`word:${wordId}`, wordData);
+    return c.json({ word: wordData });
+  } catch (error) {
+    console.error('Error adding word:', error);
+    return c.json({ error: 'Failed to add word' }, 500);
+  }
+});
+
+// Delete word
+app.delete('/make-server-e9cd80f1/words/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    await kv.del(`word:${id}`);
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting word:', error);
+    return c.json({ error: 'Failed to delete word' }, 500);
+  }
+});
+
+// ==================== GAME MANAGEMENT ====================
+
+// Create new game
+app.post('/make-server-e9cd80f1/games/create', async (c) => {
+  try {
+    const code = generateGameCode();
+    const game = {
+      code,
+      status: 'waiting' as const,
+      guessedLetters: [],
+      wrongGuesses: 0,
+      maxWrongs: 6,
+      createdAt: Date.now()
+    };
+
+    await kv.set(`game:${code}`, game);
+    return c.json({ code, game });
+  } catch (error) {
+    console.error('Error creating game:', error);
+    return c.json({ error: 'Failed to create game' }, 500);
+  }
+});
+
+// Get game info
+app.get('/make-server-e9cd80f1/games/:code', async (c) => {
+  try {
+    const code = c.req.param('code').toUpperCase();
+    const game = await kv.get(`game:${code}`);
+    
+    if (!game) {
+      return c.json({ error: 'Game not found' }, 404);
+    }
+
+    return c.json({ game });
+  } catch (error) {
+    console.error('Error getting game:', error);
+    return c.json({ error: 'Failed to get game' }, 500);
+  }
+});
+
+// Start game
+app.post('/make-server-e9cd80f1/games/:code/start', async (c) => {
+  try {
+    const code = c.req.param('code').toUpperCase();
+    const game = await kv.get(`game:${code}`);
+    
+    if (!game) {
+      return c.json({ error: 'Game not found' }, 404);
+    }
+
+    // Get random word
+    const words = await kv.getByPrefix('word:');
+    if (!words || words.length === 0) {
+      return c.json({ error: 'No words available' }, 400);
+    }
+
+    const randomWord = words[Math.floor(Math.random() * words.length)];
+    
+    const updatedGame = {
+      ...game,
+      status: 'playing' as const,
+      currentWord: randomWord.word,
+      currentCategory: randomWord.category,
+      currentHint: randomWord.hint,
+      guessedLetters: [],
+      wrongGuesses: 0,
+      startedAt: Date.now()
+    };
+
+    await kv.set(`game:${code}`, updatedGame);
+    return c.json({ game: updatedGame });
+  } catch (error) {
+    console.error('Error starting game:', error);
+    return c.json({ error: 'Failed to start game' }, 500);
+  }
+});
+
+// Reset game
+app.post('/make-server-e9cd80f1/games/:code/reset', async (c) => {
+  try {
+    const code = c.req.param('code').toUpperCase();
+    
+    // Delete game and all players
+    await kv.del(`game:${code}`);
+    const players = await kv.getByPrefix(`player:${code}:`);
+    if (players) {
+      for (const player of players) {
+        await kv.del(`player:${code}:${player.id}`);
+      }
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error resetting game:', error);
+    return c.json({ error: 'Failed to reset game' }, 500);
+  }
+});
+
+// ==================== PLAYER MANAGEMENT ====================
+
+// Join game
+app.post('/make-server-e9cd80f1/games/:code/join', async (c) => {
+  try {
+    const code = c.req.param('code').toUpperCase();
+    const { name } = await c.req.json();
+    
+    if (!name || typeof name !== 'string') {
+      return c.json({ error: 'Name is required' }, 400);
+    }
+
+    const game = await kv.get(`game:${code}`);
+    if (!game) {
+      return c.json({ error: 'Game not found' }, 404);
+    }
+
+    const playerId = generateId();
+    const player = {
+      id: playerId,
+      name: name.trim(),
+      score: 0,
+      joinedAt: Date.now()
+    };
+
+    await kv.set(`player:${code}:${playerId}`, player);
+    return c.json({ playerId, player });
+  } catch (error) {
+    console.error('Error joining game:', error);
+    return c.json({ error: 'Failed to join game' }, 500);
+  }
+});
+
+// Get players in game
+app.get('/make-server-e9cd80f1/games/:code/players', async (c) => {
+  try {
+    const code = c.req.param('code').toUpperCase();
+    const players = await kv.getByPrefix(`player:${code}:`);
+    return c.json({ players: players || [] });
+  } catch (error) {
+    console.error('Error getting players:', error);
+    return c.json({ error: 'Failed to get players' }, 500);
+  }
+});
+
+// ==================== GAME PLAY ====================
+
+// Guess letter
+app.post('/make-server-e9cd80f1/games/:code/guess', async (c) => {
+  try {
+    const code = c.req.param('code').toUpperCase();
+    const { letter, playerId } = await c.req.json();
+    
+    if (!letter || typeof letter !== 'string' || letter.length !== 1) {
+      return c.json({ error: 'Invalid letter' }, 400);
+    }
+
+    const game = await kv.get(`game:${code}`);
+    if (!game || game.status !== 'playing') {
+      return c.json({ error: 'Game not in playing state' }, 400);
+    }
+
+    const upperLetter = letter.toUpperCase();
+    if (game.guessedLetters.includes(upperLetter)) {
+      return c.json({ error: 'Letter already guessed' }, 400);
+    }
+
+    const isCorrect = game.currentWord.includes(upperLetter);
+    const updatedGame = {
+      ...game,
+      guessedLetters: [...game.guessedLetters, upperLetter],
+      wrongGuesses: isCorrect ? game.wrongGuesses : game.wrongGuesses + 1
+    };
+
+    // Check if game is won
+    const allLettersGuessed = game.currentWord
+      .split('')
+      .every((l: string) => updatedGame.guessedLetters.includes(l));
+
+    // Check if game is lost
+    const isLost = updatedGame.wrongGuesses >= updatedGame.maxWrongs;
+
+    if (allLettersGuessed || isLost) {
+      updatedGame.status = 'finished';
+      
+      // Update player score if won
+      if (allLettersGuessed && playerId) {
+        const player = await kv.get(`player:${code}:${playerId}`);
+        if (player) {
+          const pointsEarned = 100 - (updatedGame.wrongGuesses * 10);
+          const updatedPlayer = {
+            ...player,
+            score: player.score + Math.max(pointsEarned, 10)
+          };
+          await kv.set(`player:${code}:${playerId}`, updatedPlayer);
+          updatedGame.winner = player.name;
+        }
+      }
+    }
+
+    await kv.set(`game:${code}`, updatedGame);
+    return c.json({ game: updatedGame });
+  } catch (error) {
+    console.error('Error guessing letter:', error);
+    return c.json({ error: 'Failed to process guess' }, 500);
+  }
+});
+
+// Health check
+app.get('/make-server-e9cd80f1/health', (c) => {
+  return c.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+Deno.serve(app.fetch);
