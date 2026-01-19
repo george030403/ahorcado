@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, Users, Trophy } from 'lucide-react';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 
@@ -33,9 +33,13 @@ export function MainScreen({ onBack }: MainScreenProps) {
   useEffect(() => {
     if (!isJoined || !gameCode) return;
 
+    // Carga inicial inmediata
+    loadGameData();
+
+    // Actualización cada segundo para mejor experiencia
     const interval = setInterval(() => {
       loadGameData();
-    }, 2000);
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [isJoined, gameCode]);
@@ -46,13 +50,15 @@ export function MainScreen({ onBack }: MainScreenProps) {
         fetch(
           `https://${projectId}.supabase.co/functions/v1/make-server-e9cd80f1/games/${gameCode}/players`,
           {
-            headers: { Authorization: `Bearer ${publicAnonKey}` }
+            headers: { Authorization: `Bearer ${publicAnonKey}` },
+            cache: 'no-store' // Evita caché para datos en tiempo real
           }
         ),
         fetch(
           `https://${projectId}.supabase.co/functions/v1/make-server-e9cd80f1/games/${gameCode}`,
           {
-            headers: { Authorization: `Bearer ${publicAnonKey}` }
+            headers: { Authorization: `Bearer ${publicAnonKey}` },
+            cache: 'no-store'
           }
         )
       ]);

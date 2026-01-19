@@ -32,6 +32,10 @@ export function PlayerScreen({ onBack }: PlayerScreenProps) {
   useEffect(() => {
     if (!isJoined || !gameCode) return;
 
+    // Carga inicial inmediata
+    loadGameData();
+
+    // Actualización automática cada segundo
     const interval = setInterval(() => {
       loadGameData();
     }, 1000);
@@ -44,7 +48,8 @@ export function PlayerScreen({ onBack }: PlayerScreenProps) {
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-e9cd80f1/games/${gameCode}`,
         {
-          headers: { Authorization: `Bearer ${publicAnonKey}` }
+          headers: { Authorization: `Bearer ${publicAnonKey}` },
+          cache: 'no-store' // Sin caché para actualizaciones en tiempo real
         }
       );
 
@@ -309,9 +314,16 @@ export function PlayerScreen({ onBack }: PlayerScreenProps) {
 
         {game?.status === 'finished' && (
           <div className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-8 border border-blue-500/30 text-center">
-            <p className="text-2xl font-bold text-blue-300 mb-2">🏁 Game Finished</p>
+            <p className="text-4xl mb-3">🏁</p>
+            <p className="text-2xl font-bold text-blue-300 mb-3">Game Finished!</p>
+            {game.currentWord && (
+              <div className="mb-4 bg-white/10 rounded-xl p-4">
+                <p className="text-white/70 text-sm mb-1">The word was:</p>
+                <p className="text-3xl font-bold text-white tracking-wider">{game.currentWord}</p>
+              </div>
+            )}
             {game.winner && (
-              <p className="text-white/70">Winner: <span className="font-bold text-white">{game.winner}</span></p>
+              <p className="text-lg text-white/70">Winner: <span className="font-bold text-white text-xl">{game.winner}</span></p>
             )}
           </div>
         )}
