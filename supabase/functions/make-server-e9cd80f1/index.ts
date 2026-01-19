@@ -222,6 +222,10 @@ app.post('/make-server-e9cd80f1/games/:code/join', async (c) => {
       id: playerId,
       name: name.trim(),
       score: 0,
+      guessedLetters: [],
+      wrongGuesses: 0,
+      isEliminated: false,
+      finishedAt: null,
       joinedAt: Date.now()
     };
 
@@ -247,7 +251,7 @@ app.get('/make-server-e9cd80f1/games/:code/players', async (c) => {
 
 // ==================== GAME PLAY ====================
 
-// Guess letter
+// Guess letter (individual per player)
 app.post('/make-server-e9cd80f1/games/:code/guess', async (c) => {
   try {
     const code = c.req.param('code').toUpperCase();
@@ -257,54 +261,96 @@ app.post('/make-server-e9cd80f1/games/:code/guess', async (c) => {
       return c.json({ error: 'Invalid letter' }, 400);
     }
 
+    if (!playerId) {
+      return c.json({ error: 'Player ID required' }, 400);
+    }
+
     const game = await kv.get(`game:${code}`);
     if (!game || game.status !== 'playing') {
       return c.json({ error: 'Game not in playing state' }, 400);
     }
 
+    const player = await kv.get(`player:${code}:${playerId}`);
+    if (!player) {
+      return c.json({ error: 'Player not found' }, 404);
+    }
+
+    if (player.isEliminated) {
+      return c.json({ error: 'Player is eliminated' }, 400);
+    }
+
     const upperLetter = letter.toUpperCase();
-    if (game.guessedLetters.includes(upperLetter)) {
+    if (player.guessedLetters?.includes(upperLetter)) {
       return c.json({ error: 'Letter already guessed' }, 400);
     }
 
     const isCorrect = game.currentWord.includes(upperLetter);
-    const updatedGame = {
-      ...game,
-      guessedLetters: [...game.guessedLetters, upperLetter],
-      wrongGuesses: isCorrect ? game.wrongGuesses : game.wrongGuesses + 1
+    const updatedPlayer = {
+      ...player,
+      guessedLetters: [...(player.guessedLetters || []), upperLetter],
+      wrongGuesses: isCorrect ? player.wrongGuesses : (player.wrongGuesses || 0) + 1
     };
 
-    // Check if game is won
+    // Check if player won
     const allLettersGuessed = game.currentWord
       .split('')
-      .every((l: string) => updatedGame.guessedLetters.includes(l));
+      .every((l: string) => updatedPlayer.guessedLetters.includes(l));
 
-    // Check if game is lost
-    const isLost = updatedGame.wrongGuesses >= updatedGame.maxWrongs;
+    // Check if player lost (eliminated)
+    const isEliminated = updatedPlayer.wrongGuesses >= game.maxWrongs;
 
-    if (allLettersGuessed || isLost) {
-      updatedGame.status = 'finished';
+    if (allLettersGuessed) {
+      updatedPlayer.finishedAt = Date.now();
+      updatedPlayer.score = (player.score || 0) + Math.max(100 - (updatedPlayer.wrongGuesses * 10), 10);
       
-      // Update player score if won
-      if (allLettersGuessed && playerId) {
-        const player = await kv.get(`player:${code}:${playerId}`);
-        if (player) {
-          const pointsEarned = 100 - (updatedGame.wrongGuesses * 10);
-          const updatedPlayer = {
-            ...player,
-            score: player.score + Math.max(pointsEarned, 10)
-          };
-          await kv.set(`player:${code}:${playerId}`, updatedPlayer);
-          updatedGame.winner = player.name;
-        }
+      // Check if this is the first winner
+      if (!game.winner) {
+        const updatedGame = {
+          ...game,
+          winner: player.name,
+          winnerId: playerId,
+          status: 'finished'
+        };
+        await kv.set(`game:${code}`, updatedGame);
       }
     }
 
-    await kv.set(`game:${code}`, updatedGame);
-    return c.json({ game: updatedGame });
+    if (isEliminated) {
+      updatedPlayer.isEliminated = true;
+      updatedPlayer.finishedAt = Date.now();
+    }
+
+    await kv.set(`player:${code}:${playerId}`, updatedPlayer);
+
+    // Return player state along with game
+    return c.json({ 
+      game, 
+      player: updatedPlayer,
+      isCorrect,
+      won: allLettersGuessed,
+      eliminated: isEliminated
+    });
   } catch (error) {
     console.error('Error guessing letter:', error);
     return c.json({ error: 'Failed to process guess' }, 500);
+  }
+});
+
+// Get player state
+app.get('/make-server-e9cd80f1/games/:code/player/:playerId', async (c) => {
+  try {
+    const code = c.req.param('code').toUpperCase();
+    const playerId = c.req.param('playerId');
+    
+    const player = await kv.get(`player:${code}:${playerId}`);
+    if (!player) {
+      return c.json({ error: 'Player not found' }, 404);
+    }
+
+    return c.json({ player });
+  } catch (error) {
+    console.error('Error getting player:', error);
+    return c.json({ error: 'Failed to get player' }, 500);
   }
 });
 
