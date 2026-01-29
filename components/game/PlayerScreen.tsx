@@ -1,22 +1,19 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Lightbulb } from 'lucide-react';
-import { projectId, publicAnonKey } from '../../utils/supabase/info';
+import { ArrowLeft, Loader2, Trophy, Skull } from 'lucide-react';
 import { HangmanDrawing } from './HangmanDrawing';
+import { projectId, publicAnonKey } from '../../utils/supabase/info';
 
 interface Game {
   code: string;
   status: 'waiting' | 'playing' | 'finished';
   currentWord?: string;
   currentHint?: string;
-  currentCategory?: string;
   maxWrongs: number;
   winner?: string;
+  winnerId?: string;
 }
 
 interface PlayerState {
-  id: string;
-  name: string;
-  score: number;
   guessedLetters: string[];
   wrongGuesses: number;
   isEliminated: boolean;
@@ -34,142 +31,149 @@ export function PlayerScreen({ onBack }: PlayerScreenProps) {
   const [isJoined, setIsJoined] = useState(false);
   const [game, setGame] = useState<Game | null>(null);
   const [playerState, setPlayerState] = useState<PlayerState | null>(null);
-  const [inputCode, setInputCode] = useState('');
-  const [inputName, setInputName] = useState('');
-  const [showHint, setShowHint] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [lastGuess, setLastGuess] = useState<{letter: string, correct: boolean} | null>(null);
 
   useEffect(() => {
-    if (!isJoined || !gameCode || !playerId) return;
-
-    loadGameData();
-
-    const interval = setInterval(() => {
-      loadGameData();
-    }, 1000);
-
+    if (!isJoined || !gameCode) return;
+    loadGameState();
+    const interval = setInterval(loadGameState, 1000);
     return () => clearInterval(interval);
   }, [isJoined, gameCode, playerId]);
 
-  const loadGameData = async () => {
+  const loadGameState = async () => {
     try {
       const [gameRes, playerRes] = await Promise.all([
-        fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-e9cd80f1/games/${gameCode}`,
-          { headers: { Authorization: `Bearer ${publicAnonKey}` }, cache: 'no-store' }
-        ),
-        fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-e9cd80f1/games/${gameCode}/player/${playerId}`,
-          { headers: { Authorization: `Bearer ${publicAnonKey}` }, cache: 'no-store' }
-        )
+        fetch(`https://${projectId}.supabase.co/functions/v1/make-server-e9cd80f1/games/${gameCode}`,
+          { headers: { Authorization: `Bearer ${publicAnonKey}` }, cache: 'no-store' }),
+        playerId ? fetch(`https://${projectId}.supabase.co/functions/v1/make-server-e9cd80f1/games/${gameCode}/player/${playerId}`,
+          { headers: { Authorization: `Bearer ${publicAnonKey}` }, cache: 'no-store' }) : null
       ]);
 
       const gameData = await gameRes.json();
-      const playerData = await playerRes.json();
-
       if (gameData.game) setGame(gameData.game);
-      if (playerData.player) setPlayerState(playerData.player);
+
+      if (playerRes) {
+        const playerData = await playerRes.json();
+        if (playerData.player) {
+          setPlayerState({
+            guessedLetters: playerData.player.guessedLetters || [],
+            wrongGuesses: playerData.player.wrongGuesses || 0,
+            isEliminated: playerData.player.isEliminated || false,
+            finishedAt: playerData.player.finishedAt
+          });
+        }
+      }
     } catch (error) {
-      console.error('Error loading game data:', error);
+      console.error('Error:', error);
     }
   };
 
   const joinGame = async () => {
-    if (!inputCode.trim() || !inputName.trim()) return;
-
+    if (!gameCode.trim() || !playerName.trim()) return;
+    setLoading(true);
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e9cd80f1/games/${inputCode.toUpperCase()}/join`,
+        `https://${projectId}.supabase.co/functions/v1/make-server-e9cd80f1/games/${gameCode.toUpperCase()}/join`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${publicAnonKey}` },
-          body: JSON.stringify({ name: inputName.trim() })
+          body: JSON.stringify({ playerName: playerName.trim() })
         }
       );
-
       const data = await response.json();
-      if (data.playerId) {
-        setGameCode(inputCode.toUpperCase());
-        setPlayerName(inputName.trim());
-        setPlayerId(data.playerId);
-        setPlayerState(data.player);
+      if (response.ok && data.player) {
+        setPlayerId(data.player.id);
+        setGameCode(gameCode.toUpperCase());
         setIsJoined(true);
+        await loadGameState();
       } else {
-        alert(data.error || 'Could not join game');
+        alert(data.error || 'Error joining game');
       }
     } catch (error) {
-      console.error('Error joining game:', error);
+      console.error('Error:', error);
       alert('Error joining game');
     }
+    setLoading(false);
   };
 
   const guessLetter = async (letter: string) => {
-    if (!game || !playerState || game.status !== 'playing') return;
-    if (playerState.guessedLetters?.includes(letter)) return;
-    if (playerState.isEliminated) return;
-
+    if (!game || !playerId || playerState?.isEliminated) return;
     try {
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-e9cd80f1/games/${gameCode}/guess`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${publicAnonKey}` },
-          body: JSON.stringify({ letter, playerId })
+          body: JSON.stringify({ letter: letter.toUpperCase(), playerId })
         }
       );
-
       const data = await response.json();
-      if (data.player) setPlayerState(data.player);
-      if (data.game) setGame(data.game);
+      
+      setLastGuess({ letter, correct: data.correct });
+      setTimeout(() => setLastGuess(null), 500);
+      
+      await loadGameState();
     } catch (error) {
-      console.error('Error guessing letter:', error);
+      console.error('Error:', error);
     }
   };
 
-  const getDisplayWord = () => {
-    if (!game?.currentWord || !playerState) return '';
-    const guessed = playerState.guessedLetters || [];
-    return game.currentWord
-      .split('')
-      .map(letter => (guessed.includes(letter) ? letter : '_'))
-      .join(' ');
-  };
+  const guessedLetters = playerState?.guessedLetters || [];
+  const wrongGuesses = playerState?.wrongGuesses || 0;
+  const maxWrongs = game?.maxWrongs || 6;
+  const isEliminated = playerState?.isEliminated || wrongGuesses >= maxWrongs;
+  
+  const hasWon = game?.currentWord && game.status === 'playing' &&
+    game.currentWord.split('').every(l => guessedLetters.includes(l));
 
-  const isGameWon = () => {
-    if (!game?.currentWord || !playerState) return false;
-    const guessed = playerState.guessedLetters || [];
-    return game.currentWord.split('').every(letter => guessed.includes(letter));
-  };
-
-  const isGameLost = () => {
-    return playerState?.isEliminated || (playerState && playerState.wrongGuesses >= (game?.maxWrongs || 6));
-  };
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
   if (!isJoined) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <button onClick={onBack} className="absolute top-6 left-6 flex items-center gap-2 text-white/80 hover:text-white transition-colors">
-          <ArrowLeft className="w-5 h-5" /> Back
+      <div className="min-h-screen flex items-center justify-center p-4 relative z-10">
+        <button onClick={onBack} className="absolute top-6 left-6 flex items-center gap-2 text-white/70 hover:text-white transition-all group">
+          <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" /> Back
         </button>
 
-        <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-8 max-w-md w-full shadow-2xl border border-white/20">
-          <h1 className="text-3xl font-bold text-white text-center mb-6">Join Game</h1>
+        <div className="glass-card rounded-3xl p-8 max-w-md w-full animate-fade-in-scale">
+          <div className="text-center mb-8">
+            <div className="text-6xl mb-4 animate-float"></div>
+            <h1 className="text-3xl font-bold text-gradient mb-2">Join Game</h1>
+            <p className="text-white/60">Enter the game code to play</p>
+          </div>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-white/70 text-sm mb-2">Your Name</label>
-              <input type="text" placeholder="Enter your name" value={inputName} onChange={(e) => setInputName(e.target.value)}
-                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/30" maxLength={20} />
+              <label className="text-white/70 text-sm mb-2 block">Game Code</label>
+              <input
+                type="text"
+                placeholder="Enter 6-digit code"
+                value={gameCode}
+                onChange={(e) => setGameCode(e.target.value.toUpperCase())}
+                className="w-full input-glass rounded-xl px-4 py-3 text-white text-center text-2xl tracking-[0.5em] uppercase"
+                maxLength={6}
+              />
             </div>
-
+            
             <div>
-              <label className="block text-white/70 text-sm mb-2">Game Code</label>
-              <input type="text" placeholder="Enter game code" value={inputCode} onChange={(e) => setInputCode(e.target.value.toUpperCase())}
-                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white text-center text-2xl tracking-wider placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/30 uppercase" maxLength={6} />
+              <label className="text-white/70 text-sm mb-2 block">Your Name</label>
+              <input
+                type="text"
+                placeholder="Enter your name"
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                className="w-full input-glass rounded-xl px-4 py-3 text-white text-center text-lg"
+                maxLength={20}
+              />
             </div>
-
-            <button onClick={joinGame} disabled={!inputCode.trim() || !inputName.trim()}
-              className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-3 px-6 rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50">
-              Join Game
+            
+            <button
+              onClick={joinGame}
+              disabled={loading || !gameCode.trim() || !playerName.trim()}
+              className="w-full btn-premium btn-emerald text-white py-4 px-6 rounded-xl font-bold text-lg mt-4 disabled:opacity-50"
+            >
+              {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Join Game'}
             </button>
           </div>
         </div>
@@ -177,83 +181,126 @@ export function PlayerScreen({ onBack }: PlayerScreenProps) {
     );
   }
 
-  const wrongGuesses = playerState?.wrongGuesses || 0;
-  const maxWrongs = game?.maxWrongs || 6;
-  const guessedLetters = playerState?.guessedLetters || [];
-
   return (
-    <div className="min-h-screen p-4 md:p-6">
-      <button onClick={() => { setIsJoined(false); setGameCode(''); setPlayerName(''); setPlayerId(''); setGame(null); setPlayerState(null); }}
-        className="mb-4 flex items-center gap-2 text-white/80 hover:text-white transition-colors">
-        <ArrowLeft className="w-5 h-5" /> Leave Game
+    <div className="min-h-screen p-4 relative z-10">
+      <button onClick={() => { setIsJoined(false); setPlayerId(''); setGame(null); setPlayerState(null); }}
+        className="mb-4 flex items-center gap-2 text-white/70 hover:text-white transition-all group">
+        <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" /> Leave Game
       </button>
 
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/20 text-center">
-          <p className="text-white/70 text-sm">Playing as</p>
-          <p className="text-2xl font-bold text-white">{playerName}</p>
-          <p className="text-white/50 text-sm mt-1">Game: {gameCode}</p>
+      <div className="max-w-lg mx-auto space-y-4">
+        {/* Header Card */}
+        <div className="glass-card rounded-2xl p-4 text-center animate-fade-in-up">
+          <p className="text-white/60 text-sm">Playing as</p>
+          <p className="text-xl font-bold text-white">{playerName}</p>
+          <div className="flex items-center justify-center gap-2 mt-2">
+            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+            <span className="text-white/70 font-mono">{gameCode}</span>
+          </div>
         </div>
 
+        {/* Game Status */}
         {game?.status === 'waiting' && (
-          <div className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-8 mb-6 border border-yellow-500/30 text-center">
-            <p className="text-2xl font-bold text-yellow-300 mb-2"> Waiting for game to start...</p>
-            <p className="text-white/70">The admin will start the game soon</p>
+          <div className="glass-card rounded-2xl p-8 text-center animate-fade-in-up">
+            <div className="text-5xl mb-4 animate-bounce"></div>
+            <p className="text-xl text-yellow-300 font-semibold">Waiting for game to start...</p>
+            <p className="text-white/50 text-sm mt-2">The admin will start the game soon</p>
           </div>
         )}
 
-        {game?.status === 'playing' && !isGameWon() && !isGameLost() && (
+        {/* Winner State */}
+        {hasWon && (
+          <div className="glass-card rounded-2xl p-8 text-center winner-glow border-2 border-green-400/50 animate-bounce-in">
+            <Trophy className="w-16 h-16 text-yellow-400 mx-auto mb-4 animate-float" />
+            <p className="text-3xl font-bold text-green-400 mb-2">YOU WIN! </p>
+            <p className="text-4xl font-bold text-white tracking-widest">{game?.currentWord}</p>
+          </div>
+        )}
+
+        {/* Eliminated State */}
+        {isEliminated && !hasWon && game?.status === 'playing' && (
+          <div className="glass-card rounded-2xl p-8 text-center border-2 border-red-500/50 animate-shake">
+            <Skull className="w-16 h-16 text-red-400 mx-auto mb-4 skull-shake" />
+            <p className="text-3xl font-bold text-red-400 mb-2">ELIMINATED! </p>
+            <p className="text-white/60">The word was:</p>
+            <p className="text-2xl font-bold text-white tracking-widest mt-2">{game?.currentWord}</p>
+          </div>
+        )}
+
+        {/* Game Finished */}
+        {game?.status === 'finished' && (
+          <div className="glass-card rounded-2xl p-8 text-center animate-fade-in-up">
+            <p className="text-2xl font-bold text-blue-400 mb-4"> Game Finished!</p>
+            {game.winner && <p className="text-white">Winner: <span className="font-bold text-yellow-400">{game.winner}</span></p>}
+            <p className="text-white/60 mt-2">Word: <span className="font-bold text-white">{game.currentWord}</span></p>
+          </div>
+        )}
+
+        {/* Active Game */}
+        {game?.status === 'playing' && !isEliminated && !hasWon && (
           <>
-            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 mb-6 border border-white/20">
+            {/* Hangman Drawing */}
+            <div className="glass-card rounded-2xl p-6 animate-fade-in-up">
               <HangmanDrawing wrongGuesses={wrongGuesses} maxWrongs={maxWrongs} />
-              <div className="text-center mt-4">
-                <p className="text-white/60 text-sm">Attempts Remaining</p>
-                <p className="text-3xl font-bold text-white">{maxWrongs - wrongGuesses}</p>
-              </div>
-            </div>
-
-            {game.currentCategory && (
-              <div className="bg-white/5 backdrop-blur-lg rounded-xl p-4 mb-4 border border-white/10 text-center">
-                <p className="text-white/60 text-sm mb-1">Category</p>
-                <p className="text-xl font-semibold text-white">{game.currentCategory}</p>
-              </div>
-            )}
-
-            {game.currentHint && (
-              <div className="mb-4">
-                <button onClick={() => setShowHint(!showHint)}
-                  className="w-full bg-white/5 backdrop-blur-lg rounded-xl p-4 border border-white/10 text-white hover:bg-white/10 transition-colors flex items-center justify-center gap-2">
-                  <Lightbulb className={`w-5 h-5 ${showHint ? 'text-yellow-400' : 'text-white/60'}`} />
-                  <span>{showHint ? 'Hide Hint' : 'Show Hint'}</span>
-                </button>
-                {showHint && (
-                  <div className="mt-2 bg-yellow-500/10 rounded-xl p-4 border border-yellow-500/20">
-                    <p className="text-yellow-300 text-center italic">"{game.currentHint}"</p>
+              <div className="flex justify-between items-center mt-4 px-2">
+                <div className="text-sm text-white/60">
+                  Attempts: <span className={`font-bold ${wrongGuesses >= maxWrongs - 2 ? 'text-red-400' : 'text-white'}`}>
+                    {maxWrongs - wrongGuesses}
+                  </span> left
+                </div>
+                {game.currentHint && (
+                  <div className="text-sm text-purple-300">
+                     {game.currentHint}
                   </div>
                 )}
               </div>
-            )}
-
-            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 mb-6 border border-white/20">
-              <p className="text-4xl md:text-5xl font-bold text-white text-center tracking-[0.3em] font-mono">
-                {getDisplayWord()}
-              </p>
+              
+              {/* Progress Bar */}
+              <div className="mt-3 progress-bar h-2 rounded-full">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    wrongGuesses >= maxWrongs - 1 ? 'bg-gradient-to-r from-red-500 to-red-600' :
+                    wrongGuesses >= maxWrongs - 3 ? 'bg-gradient-to-r from-yellow-500 to-orange-500' :
+                    'bg-gradient-to-r from-green-500 to-emerald-500'
+                  }`}
+                  style={{ width: `${((maxWrongs - wrongGuesses) / maxWrongs) * 100}%` }}
+                />
+              </div>
             </div>
 
-            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+            {/* Word Display */}
+            <div className="glass-card rounded-2xl p-6 animate-fade-in-up stagger-1">
+              <div className="flex flex-wrap justify-center gap-2">
+                {game.currentWord?.split('').map((letter, i) => (
+                  <div key={i} className={`word-letter ${guessedLetters.includes(letter) ? 'revealed' : ''}`}>
+                    {guessedLetters.includes(letter) ? letter : ''}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Keyboard */}
+            <div className="glass-card rounded-2xl p-4 animate-fade-in-up stagger-2">
               <div className="grid grid-cols-7 gap-2">
-                {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((letter) => {
+                {alphabet.map((letter) => {
                   const isGuessed = guessedLetters.includes(letter);
                   const isCorrect = isGuessed && game.currentWord?.includes(letter);
                   const isWrong = isGuessed && !game.currentWord?.includes(letter);
+                  const isLastGuess = lastGuess?.letter === letter;
 
                   return (
-                    <button key={letter} onClick={() => guessLetter(letter)} disabled={isGuessed}
-                      className={`aspect-square rounded-xl font-bold text-lg transition-all ${
-                        isCorrect ? 'bg-green-500 text-white' :
-                        isWrong ? 'bg-red-500 text-white' :
-                        'bg-white/20 text-white hover:bg-white/30 active:scale-95'
-                      } disabled:opacity-50 disabled:cursor-not-allowed`}>
+                    <button
+                      key={letter}
+                      onClick={() => guessLetter(letter)}
+                      disabled={isGuessed}
+                      className={`letter-tile aspect-square rounded-lg font-bold text-lg transition-all
+                        ${isLastGuess && lastGuess?.correct ? 'correct' : ''}
+                        ${isLastGuess && !lastGuess?.correct ? 'wrong' : ''}
+                        ${isCorrect ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-glow-emerald' :
+                          isWrong ? 'bg-gradient-to-br from-red-500/50 to-red-700/50 text-white/50' :
+                          'bg-white/10 hover:bg-white/20 text-white border border-white/10 hover:border-white/30'}
+                        disabled:cursor-not-allowed`}
+                    >
                       {letter}
                     </button>
                   );
@@ -261,44 +308,6 @@ export function PlayerScreen({ onBack }: PlayerScreenProps) {
               </div>
             </div>
           </>
-        )}
-
-        {isGameWon() && (
-          <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 backdrop-blur-lg rounded-2xl p-8 border border-green-500/30 text-center">
-            <p className="text-6xl mb-4"></p>
-            <p className="text-3xl font-bold text-green-300 mb-4">YOU WON!</p>
-            <div className="bg-white/10 rounded-xl p-4 mb-4">
-              <p className="text-white/70 text-sm mb-1">The word was:</p>
-              <p className="text-3xl font-bold text-white tracking-wider">{game?.currentWord}</p>
-            </div>
-            <p className="text-xl text-white">+{Math.max(100 - (wrongGuesses * 10), 10)} points!</p>
-          </div>
-        )}
-
-        {isGameLost() && (
-          <div className="bg-gradient-to-r from-red-500/20 to-pink-500/20 backdrop-blur-lg rounded-2xl p-8 border border-red-500/30 text-center">
-            <p className="text-6xl mb-4"></p>
-            <p className="text-3xl font-bold text-red-300 mb-4">ELIMINATED!</p>
-            <div className="bg-white/10 rounded-xl p-4 mb-4">
-              <p className="text-white/70 text-sm mb-1">The word was:</p>
-              <p className="text-3xl font-bold text-white tracking-wider">{game?.currentWord}</p>
-            </div>
-            <p className="text-white/70">Better luck next time!</p>
-          </div>
-        )}
-
-        {game?.status === 'finished' && !isGameWon() && !isGameLost() && (
-          <div className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-8 border border-blue-500/30 text-center">
-            <p className="text-4xl mb-3"></p>
-            <p className="text-2xl font-bold text-blue-300 mb-3">Game Finished!</p>
-            {game.currentWord && (
-              <div className="mb-4 bg-white/10 rounded-xl p-4">
-                <p className="text-white/70 text-sm mb-1">The word was:</p>
-                <p className="text-3xl font-bold text-white tracking-wider">{game.currentWord}</p>
-              </div>
-            )}
-            {game.winner && <p className="text-lg text-white/70">Winner: <span className="font-bold text-white text-xl">{game.winner}</span></p>}
-          </div>
         )}
       </div>
     </div>
