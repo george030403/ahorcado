@@ -78,7 +78,7 @@ export function PlayerScreen({ onBack }: PlayerScreenProps) {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${publicAnonKey}` },
-          body: JSON.stringify({ playerName: playerName.trim() })
+          body: JSON.stringify({ name: playerName.trim() })
         }
       );
       const data = await response.json();
