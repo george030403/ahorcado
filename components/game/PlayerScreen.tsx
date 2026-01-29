@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Loader2, Trophy, Skull } from 'lucide-react';
+import { ArrowLeft, Loader2, Trophy, Skull, Gamepad2, User, Hash, Lightbulb, CheckCircle2, XCircle } from 'lucide-react';
 import { HangmanDrawing } from './HangmanDrawing';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 
@@ -138,14 +138,18 @@ export function PlayerScreen({ onBack }: PlayerScreenProps) {
 
         <div className="glass-card rounded-3xl p-8 max-w-md w-full animate-fade-in-scale">
           <div className="text-center mb-8">
-            <div className="text-6xl mb-4 animate-float"></div>
+            <div className="icon-container w-20 h-20 mx-auto mb-4 animate-float">
+              <Gamepad2 className="w-10 h-10 text-emerald-400" />
+            </div>
             <h1 className="text-3xl font-bold text-gradient mb-2">Join Game</h1>
             <p className="text-white/60">Enter the game code to play</p>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="text-white/70 text-sm mb-2 block">Game Code</label>
+              <label className="text-white/70 text-sm mb-2 flex items-center gap-2">
+                <Hash className="w-4 h-4" /> Game Code
+              </label>
               <input
                 type="text"
                 placeholder="Enter 6-digit code"
@@ -157,7 +161,9 @@ export function PlayerScreen({ onBack }: PlayerScreenProps) {
             </div>
             
             <div>
-              <label className="text-white/70 text-sm mb-2 block">Your Name</label>
+              <label className="text-white/70 text-sm mb-2 flex items-center gap-2">
+                <User className="w-4 h-4" /> Your Name
+              </label>
               <input
                 type="text"
                 placeholder="Enter your name"
@@ -202,7 +208,7 @@ export function PlayerScreen({ onBack }: PlayerScreenProps) {
         {/* Game Status */}
         {game?.status === 'waiting' && (
           <div className="glass-card rounded-2xl p-8 text-center animate-fade-in-up">
-            <div className="text-5xl mb-4 animate-bounce"></div>
+            <Loader2 className="w-12 h-12 text-yellow-400 mx-auto mb-4 animate-spin" />
             <p className="text-xl text-yellow-300 font-semibold">Waiting for game to start...</p>
             <p className="text-white/50 text-sm mt-2">The admin will start the game soon</p>
           </div>
@@ -212,7 +218,7 @@ export function PlayerScreen({ onBack }: PlayerScreenProps) {
         {hasWon && (
           <div className="glass-card rounded-2xl p-8 text-center winner-glow border-2 border-green-400/50 animate-bounce-in">
             <Trophy className="w-16 h-16 text-yellow-400 mx-auto mb-4 animate-float" />
-            <p className="text-3xl font-bold text-green-400 mb-2">YOU WIN! </p>
+            <p className="text-3xl font-bold text-green-400 mb-2">YOU WIN!</p>
             <p className="text-4xl font-bold text-white tracking-widest">{game?.currentWord}</p>
           </div>
         )}
@@ -221,7 +227,7 @@ export function PlayerScreen({ onBack }: PlayerScreenProps) {
         {isEliminated && !hasWon && game?.status === 'playing' && (
           <div className="glass-card rounded-2xl p-8 text-center border-2 border-red-500/50 animate-shake">
             <Skull className="w-16 h-16 text-red-400 mx-auto mb-4 skull-shake" />
-            <p className="text-3xl font-bold text-red-400 mb-2">ELIMINATED! </p>
+            <p className="text-3xl font-bold text-red-400 mb-2">ELIMINATED!</p>
             <p className="text-white/60">The word was:</p>
             <p className="text-2xl font-bold text-white tracking-widest mt-2">{game?.currentWord}</p>
           </div>
@@ -230,7 +236,8 @@ export function PlayerScreen({ onBack }: PlayerScreenProps) {
         {/* Game Finished */}
         {game?.status === 'finished' && (
           <div className="glass-card rounded-2xl p-8 text-center animate-fade-in-up">
-            <p className="text-2xl font-bold text-blue-400 mb-4"> Game Finished!</p>
+            <CheckCircle2 className="w-12 h-12 text-blue-400 mx-auto mb-4" />
+            <p className="text-2xl font-bold text-blue-400 mb-4">Game Finished!</p>
             {game.winner && <p className="text-white">Winner: <span className="font-bold text-yellow-400">{game.winner}</span></p>}
             <p className="text-white/60 mt-2">Word: <span className="font-bold text-white">{game.currentWord}</span></p>
           </div>
@@ -249,8 +256,8 @@ export function PlayerScreen({ onBack }: PlayerScreenProps) {
                   </span> left
                 </div>
                 {game.currentHint && (
-                  <div className="text-sm text-purple-300">
-                     {game.currentHint}
+                  <div className="text-sm text-purple-300 flex items-center gap-1">
+                    <Lightbulb className="w-4 h-4" /> {game.currentHint}
                   </div>
                 )}
               </div>
@@ -293,15 +300,16 @@ export function PlayerScreen({ onBack }: PlayerScreenProps) {
                       key={letter}
                       onClick={() => guessLetter(letter)}
                       disabled={isGuessed}
-                      className={`letter-tile aspect-square rounded-lg font-bold text-lg transition-all
-                        ${isLastGuess && lastGuess?.correct ? 'correct' : ''}
-                        ${isLastGuess && !lastGuess?.correct ? 'wrong' : ''}
+                      className={`letter-tile aspect-square rounded-lg font-bold text-lg transition-all flex items-center justify-center
+                        ${isLastGuess && lastGuess?.correct ? 'correct scale-110' : ''}
+                        ${isLastGuess && !lastGuess?.correct ? 'wrong scale-90' : ''}
                         ${isCorrect ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-glow-emerald' :
                           isWrong ? 'bg-gradient-to-br from-red-500/50 to-red-700/50 text-white/50' :
                           'bg-white/10 hover:bg-white/20 text-white border border-white/10 hover:border-white/30'}
                         disabled:cursor-not-allowed`}
                     >
-                      {letter}
+                      {isCorrect ? <CheckCircle2 className="w-5 h-5" /> : 
+                       isWrong ? <XCircle className="w-5 h-5" /> : letter}
                     </button>
                   );
                 })}

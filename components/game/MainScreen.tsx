@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Users, Trophy, Skull, Crown, Sparkles } from 'lucide-react';
+import { ArrowLeft, Users, Trophy, Skull, Crown, Sparkles, Radio, Clock, Medal, Target, CheckCircle2 } from 'lucide-react';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 
 interface Player {
@@ -103,7 +103,9 @@ export function MainScreen({ onBack }: MainScreenProps) {
 
         <div className="glass-card rounded-3xl p-8 max-w-md w-full animate-fade-in-scale">
           <div className="text-center mb-8">
-            <div className="text-6xl mb-4 animate-float"></div>
+            <div className="icon-container w-20 h-20 mx-auto mb-4 animate-float">
+              <Radio className="w-10 h-10 text-blue-400" />
+            </div>
             <h1 className="text-3xl font-bold text-gradient mb-2">Main Display</h1>
             <p className="text-white/60">Connect to show the leaderboard</p>
           </div>
@@ -157,14 +159,14 @@ export function MainScreen({ onBack }: MainScreenProps) {
         {/* Game Status */}
         {game && (
           <div className="glass-card rounded-2xl p-6 mb-6 text-center animate-fade-in-up stagger-1">
-            <span className={`px-8 py-3 rounded-full font-bold text-lg inline-block ${
+            <span className={`px-8 py-3 rounded-full font-bold text-lg inline-flex items-center gap-2 ${
               game.status === 'waiting' ? 'status-waiting text-gray-900' :
               game.status === 'playing' ? 'status-playing text-white' :
               'status-finished text-white'
             }`}>
-              {game.status === 'waiting' ? ' Waiting to Start' :
-               game.status === 'playing' ? ' Game in Progress' :
-               ' Game Finished'}
+              {game.status === 'waiting' && <><Clock className="w-5 h-5" /> Waiting to Start</>}
+              {game.status === 'playing' && <><Target className="w-5 h-5" /> Game in Progress</>}
+              {game.status === 'finished' && <><CheckCircle2 className="w-5 h-5" /> Game Finished</>}
             </span>
           </div>
         )}
@@ -183,7 +185,7 @@ export function MainScreen({ onBack }: MainScreenProps) {
               {podiumPlayers[1] && (
                 <div className="flex flex-col items-center animate-slide-in-left">
                   <div className="glass-card rounded-2xl p-6 w-44 mb-3 trophy-shine">
-                    <p className="text-5xl text-center mb-3"></p>
+                    <Medal className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                     <p className="text-xl font-bold text-white text-center truncate">{podiumPlayers[1].name}</p>
                     <p className="text-gray-300 text-center text-sm">{podiumPlayers[1].score} pts</p>
                   </div>
@@ -198,7 +200,7 @@ export function MainScreen({ onBack }: MainScreenProps) {
                 <div className="flex flex-col items-center -mt-12 animate-fade-in-up">
                   <Crown className="w-14 h-14 text-yellow-400 mb-3 animate-bounce" />
                   <div className="glass-card rounded-2xl p-8 w-52 mb-3 trophy-shine border-2 border-yellow-400/50">
-                    <p className="text-6xl text-center mb-3"></p>
+                    <Trophy className="w-16 h-16 text-yellow-400 mx-auto mb-3" />
                     <p className="text-2xl font-bold text-white text-center truncate">{podiumPlayers[0].name}</p>
                     <p className="text-yellow-300 text-center font-semibold">{podiumPlayers[0].score} pts</p>
                   </div>
@@ -212,7 +214,7 @@ export function MainScreen({ onBack }: MainScreenProps) {
               {podiumPlayers[2] && (
                 <div className="flex flex-col items-center animate-slide-in-right">
                   <div className="glass-card rounded-2xl p-6 w-44 mb-3 trophy-shine">
-                    <p className="text-5xl text-center mb-3"></p>
+                    <Medal className="w-12 h-12 text-orange-400 mx-auto mb-3" />
                     <p className="text-xl font-bold text-white text-center truncate">{podiumPlayers[2].name}</p>
                     <p className="text-orange-300 text-center text-sm">{podiumPlayers[2].score} pts</p>
                   </div>
@@ -281,7 +283,7 @@ export function MainScreen({ onBack }: MainScreenProps) {
                             attemptsLeft <= 3 ? 'text-yellow-400' :
                             'text-green-400'
                           }`}>
-                            {isEliminated ? '' : attemptsLeft}
+                            {isEliminated ? <Skull className="w-8 h-8 inline" /> : attemptsLeft}
                           </p>
                           <p className="text-xs text-white/50">
                             {isEliminated ? 'OUT' : 'left'}

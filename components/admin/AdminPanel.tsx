@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Trash2, Play, RotateCcw, Download, Sparkles, Users, Gamepad2 } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Play, RotateCcw, Download, Settings, Users, Gamepad2, AlertCircle, Library, FileText, Loader2 } from 'lucide-react';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { initialWords } from '../../utils/initialWords';
 
@@ -33,6 +33,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
   const [currentGame, setCurrentGame] = useState<Game | null>(null);
   const [loading, setLoading] = useState(false);
   const [playerCount, setPlayerCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => { loadWords(); }, []);
 
@@ -51,8 +52,9 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
       );
       const data = await response.json();
       if (data.words) setWords(data.words);
-    } catch (error) {
-      console.error('Error loading words:', error);
+    } catch (err) {
+      console.error('Error loading words:', err);
+      setError('Failed to load words');
     }
   };
 
@@ -65,13 +67,14 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
       );
       const data = await response.json();
       if (data.players) setPlayerCount(data.players.length);
-    } catch (error) {
-      console.error('Error loading player count:', error);
+    } catch (err) {
+      console.error('Error loading player count:', err);
     }
   };
 
   const loadInitialWords = async () => {
     setLoading(true);
+    setError(null);
     try {
       for (const wordData of initialWords) {
         await fetch(
@@ -84,8 +87,9 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
         );
       }
       await loadWords();
-    } catch (error) {
-      console.error('Error loading initial words:', error);
+    } catch (err) {
+      console.error('Error loading initial words:', err);
+      setError('Failed to load initial words');
     }
     setLoading(false);
   };
@@ -93,6 +97,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
   const addWord = async () => {
     if (!newWord.trim()) return;
     setLoading(true);
+    setError(null);
     try {
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-e9cd80f1/words`,
@@ -111,9 +116,12 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
         setNewCategory('');
         setNewHint('');
         await loadWords();
+      } else {
+        setError('Failed to add word');
       }
-    } catch (error) {
-      console.error('Error adding word:', error);
+    } catch (err) {
+      console.error('Error adding word:', err);
+      setError('Failed to add word');
     }
     setLoading(false);
   };
@@ -125,14 +133,16 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
         { method: 'DELETE', headers: { Authorization: `Bearer ${publicAnonKey}` } }
       );
       await loadWords();
-    } catch (error) {
-      console.error('Error deleting word:', error);
+    } catch (err) {
+      console.error('Error deleting word:', err);
     }
   };
 
   const createGame = async () => {
     setLoading(true);
+    setError(null);
     try {
+      console.log('Creating game...');
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-e9cd80f1/games/create`,
         {
@@ -140,13 +150,21 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${publicAnonKey}` }
         }
       );
+      
+      console.log('Response status:', response.status);
       const data = await response.json();
-      if (data.code) {
+      console.log('Response data:', data);
+      
+      if (response.ok && data.code) {
         setGameCode(data.code);
         setCurrentGame(data.game);
+        setError(null);
+      } else {
+        setError(data.error || 'Failed to create game. Please try again.');
       }
-    } catch (error) {
-      console.error('Error creating game:', error);
+    } catch (err) {
+      console.error('Error creating game:', err);
+      setError('Network error. Please check your connection and try again.');
     }
     setLoading(false);
   };
@@ -154,6 +172,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
   const startGame = async () => {
     if (!gameCode || words.length === 0) return;
     setLoading(true);
+    setError(null);
     try {
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-e9cd80f1/games/${gameCode}/start`,
@@ -163,9 +182,14 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
         }
       );
       const data = await response.json();
-      if (data.game) setCurrentGame(data.game);
-    } catch (error) {
-      console.error('Error starting game:', error);
+      if (response.ok && data.game) {
+        setCurrentGame(data.game);
+      } else {
+        setError(data.error || 'Failed to start game');
+      }
+    } catch (err) {
+      console.error('Error starting game:', err);
+      setError('Failed to start game');
     }
     setLoading(false);
   };
@@ -173,6 +197,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
   const resetGame = async () => {
     if (!gameCode) return;
     setLoading(true);
+    setError(null);
     try {
       await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-e9cd80f1/games/${gameCode}/reset`,
@@ -180,8 +205,9 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
       );
       setCurrentGame(null);
       setGameCode('');
-    } catch (error) {
-      console.error('Error resetting game:', error);
+      setPlayerCount(0);
+    } catch (err) {
+      console.error('Error resetting game:', err);
     }
     setLoading(false);
   };
@@ -196,11 +222,29 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
 
         <div className="flex items-center gap-4 mb-8 animate-fade-in-up">
           <div className="relative">
-            <Sparkles className="w-12 h-12 text-yellow-400 animate-float" />
-            <div className="absolute inset-0 blur-xl bg-yellow-500/30 animate-pulse"></div>
+            <div className="icon-container w-14 h-14">
+              <Settings className="w-7 h-7 text-amber-400" />
+            </div>
+            <div className="absolute inset-0 blur-xl bg-amber-500/20 animate-pulse"></div>
           </div>
-          <h1 className="text-4xl font-bold text-gradient-gold">Admin Panel</h1>
+          <div>
+            <h1 className="text-4xl font-bold text-gradient-gold">Admin Panel</h1>
+            <p className="text-white/40 text-sm">Manage games and words</p>
+          </div>
         </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="mb-6 glass-card rounded-xl p-4 border border-red-500/30 bg-red-500/10 animate-fade-in-up">
+            <div className="flex items-center gap-3 text-red-400">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <p>{error}</p>
+              <button onClick={() => setError(null)} className="ml-auto text-red-300 hover:text-white">
+                &times;
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Game Management */}
@@ -213,13 +257,19 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
             {!gameCode ? (
               <button onClick={createGame} disabled={loading}
                 className="w-full btn-premium btn-emerald text-white py-4 px-6 rounded-xl font-bold text-lg disabled:opacity-50">
-                <span className="flex items-center justify-center gap-2">
-                  <Plus className="w-5 h-5" /> Create New Game
-                </span>
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin" /> Creating...
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    <Plus className="w-5 h-5" /> Create New Game
+                  </span>
+                )}
               </button>
             ) : (
               <div className="space-y-4">
-                <div className="glass-card rounded-xl p-4 animate-pulse-glow">
+                <div className="glass-card rounded-xl p-4 animate-glow-pulse">
                   <p className="text-white/60 text-sm mb-1">Game Code</p>
                   <p className="text-4xl font-bold text-white tracking-[0.3em] font-mono">{gameCode}</p>
                 </div>
@@ -248,14 +298,18 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
                   {currentGame?.status === 'waiting' && (
                     <button onClick={startGame} disabled={loading || words.length === 0}
                       className="flex-1 btn-premium btn-ocean text-white py-3 px-4 rounded-xl font-bold disabled:opacity-50">
-                      <span className="flex items-center justify-center gap-2">
-                        <Play className="w-5 h-5" /> Start Game
-                      </span>
+                      {loading ? (
+                        <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+                      ) : (
+                        <span className="flex items-center justify-center gap-2">
+                          <Play className="w-5 h-5" /> Start Game
+                        </span>
+                      )}
                     </button>
                   )}
                   
                   <button onClick={resetGame} disabled={loading}
-                    className="flex-1 btn-premium btn-sunset text-white py-3 px-4 rounded-xl font-bold disabled:opacity-50">
+                    className="flex-1 btn-premium btn-rose text-white py-3 px-4 rounded-xl font-bold disabled:opacity-50">
                     <span className="flex items-center justify-center gap-2">
                       <RotateCcw className="w-5 h-5" /> Reset
                     </span>
@@ -268,7 +322,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
           {/* Word Management */}
           <div className="glass-card rounded-2xl p-6 animate-fade-in-up stagger-2">
             <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-              <Plus className="w-7 h-7 text-purple-400" />
+              <FileText className="w-7 h-7 text-purple-400" />
               Add New Word
             </h2>
             
@@ -286,7 +340,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
                 className="w-full input-glass rounded-xl px-4 py-3 text-white" />
               
               <button onClick={addWord} disabled={loading || !newWord.trim()}
-                className="w-full btn-premium btn-cosmic text-white py-3 px-6 rounded-xl font-bold disabled:opacity-50">
+                className="w-full btn-premium btn-ocean text-white py-3 px-6 rounded-xl font-bold disabled:opacity-50">
                 <span className="flex items-center justify-center gap-2">
                   <Plus className="w-5 h-5" /> Add Word
                 </span>
@@ -297,8 +351,10 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
 
         {/* Word List */}
         <div className="mt-6 glass-card rounded-2xl p-6 animate-fade-in-up stagger-3">
-          <h2 className="text-2xl font-bold text-white mb-4">
-            Word Bank <span className="text-purple-400">({words.length})</span>
+          <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <Library className="w-7 h-7 text-indigo-400" />
+            Word Bank
+            <span className="text-purple-400 text-lg">({words.length})</span>
           </h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto pr-2">
@@ -311,7 +367,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
                   {word.hint && <p className="text-xs text-white/40 mt-1 italic">"{word.hint}"</p>}
                 </div>
                 <button onClick={() => deleteWord(word.id)}
-                  className="text-red-400 hover:text-red-300 hover:scale-110 transition-all flex-shrink-0">
+                  className="text-red-400 hover:text-red-300 hover:scale-110 transition-all flex-shrink-0 p-1">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
@@ -336,9 +392,15 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
           
           <button onClick={loadInitialWords} disabled={loading}
             className="w-full btn-premium btn-ocean text-white py-3 px-6 rounded-xl font-bold disabled:opacity-50">
-            <span className="flex items-center justify-center gap-2">
-              <Download className="w-5 h-5" /> Load {initialWords.length} Initial Words
-            </span>
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <Loader2 className="w-5 h-5 animate-spin" /> Loading...
+              </span>
+            ) : (
+              <span className="flex items-center justify-center gap-2">
+                <Download className="w-5 h-5" /> Load {initialWords.length} Initial Words
+              </span>
+            )}
           </button>
         </div>
       </div>
