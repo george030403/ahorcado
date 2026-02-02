@@ -30,17 +30,9 @@ export default function App() {
           <div className="glass-card glass-card-hover rounded-3xl p-8 max-w-md w-full animate-fade-in-scale">
             {/* Header */}
             <div className="flex items-center justify-center mb-8">
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <div className="icon-container w-12 h-12">
-                    <Sparkles className="w-6 h-6 text-purple-400" />
-                  </div>
-                  <div className="absolute inset-0 blur-xl bg-purple-500/20 animate-pulse"></div>
-                </div>
-                <div>
-                  <h1 className="text-3xl font-bold text-gradient">Hangman</h1>
-                  <p className="text-xs text-white/40">Multiplayer Edition</p>
-                </div>
+              <div>
+                <h1 className="text-3xl font-bold text-gradient text-center">Hangman</h1>
+                <p className="text-xs text-white/40 text-center">Multiplayer Edition</p>
               </div>
             </div>
             
