@@ -123,8 +123,7 @@ export default function App() {
                 Made with <Heart className="w-3 h-3 text-red-400 animate-pulse" /> for fun multiplayer games
               </p>
               <div className="mt-2 flex items-center justify-center gap-1 text-white/20 text-xs">
-                <Zap className="w-3 h-3" />
-                <span>Powered by Supabase</span>
+                <span>Created by George & Ivan</span>
               </div>
             </div>
           </div>
